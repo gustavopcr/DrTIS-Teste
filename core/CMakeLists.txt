@@ -1,9 +1,7 @@
 find_package(DCMTK CONFIG REQUIRED)
 
 add_library(dicom_core STATIC
-  # List core .cc implementation files here as you create them, e.g.:
-  # src/dicom_codec_guard.cc
-  # src/dicom_loader.cc
+  src/dicom/dicom_image.cpp
 )
 add_library(drtis::dicom_core ALIAS dicom_core)
 

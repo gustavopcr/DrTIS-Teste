@@ -1,19 +1,27 @@
+find_package(DCMTK CONFIG REQUIRED)
 find_package(GTest CONFIG REQUIRED)
 include(GoogleTest)
 
-add_executable(dicom_core_tests
-  # List test .cc files here as you create them, e.g.:
-  # dicom_loader_test.cc
+set(DICOM_TEST_SOURCES
+  dicom_image_test.cpp
+  dicom_test_fixtures.cpp
 )
 
-target_link_libraries(dicom_core_tests PRIVATE
-  drtis::dicom_core
-  GTest::gtest_main
-)
+if(DICOM_TEST_SOURCES)
+  add_executable(dicom_core_tests ${DICOM_TEST_SOURCES})
 
-target_compile_options(dicom_core_tests PRIVATE
-  $<$<CXX_COMPILER_ID:GNU,Clang,AppleClang>:-Wall -Wextra -Wpedantic -Wshadow -Wconversion>
-  $<$<CXX_COMPILER_ID:MSVC>:/W4>
-)
+  target_link_libraries(dicom_core_tests PRIVATE
+    drtis::dicom_core
+    GTest::gtest_main
+    DCMTK::DCMTK
+  )
 
-gtest_discover_tests(dicom_core_tests)
+  target_compile_options(dicom_core_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang,AppleClang>:-Wall -Wextra -Wpedantic -Wshadow -Wconversion>
+    $<$<CXX_COMPILER_ID:MSVC>:/W4>
+  )
+
+  gtest_discover_tests(dicom_core_tests)
+else()
+  message(STATUS "No test sources listed yet; skipping dicom_core_tests target.")
+endif()
