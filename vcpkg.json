@@ -1,0 +1,9 @@
+{
+  "dependencies": [
+    {
+    "name": "dcmtk",
+    "features": ["zlib"]
+    },
+    "gtest"
+  ]
+}

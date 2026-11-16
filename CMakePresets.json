@@ -1,0 +1,51 @@
+{
+  "version": 3,
+  "configurePresets": [
+    {
+      "name": "core-debug",
+      "displayName": "Core Library + Tests (Debug)",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/${presetName}",
+      "toolchainFile": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "BUILD_GUI": "OFF",
+        "BUILD_TESTS": "ON"
+      }
+    },
+    {
+      "name": "core-release",
+      "displayName": "Core Library + Tests (Release)",
+      "inherits": "core-debug",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "core-debug",
+      "configurePreset": "core-debug"
+    },
+    {
+      "name": "core-release",
+      "configurePreset": "core-release"
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "core-debug",
+      "configurePreset": "core-debug",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "core-release",
+      "configurePreset": "core-release",
+      "output": {
+        "outputOnFailure": true
+      }
+    }
+  ]
+}
