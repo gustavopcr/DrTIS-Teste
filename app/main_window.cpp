@@ -120,8 +120,8 @@ void MainWindow::display_buffer(const dicom::ImageBuffer &buffer,
 
     scene_->setSceneRect(pixmap.rect());
     ui->graphicsView->fitInView(pixmap_item_, Qt::KeepAspectRatio);
-    ui->statusbar->showMessage(
-        QString("%1 x %2 | %3")
+    setWindowTitle(
+        QString("DICOM Viewer - %1 x %2 | %3")
             .arg(buffer.width)
             .arg(buffer.height)
             .arg(is_monochrome ? tr("Monochrome") : tr("RGB")));
