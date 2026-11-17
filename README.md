@@ -24,8 +24,11 @@ O projeto foi organizado separando estritamente a lógica de domínio DICOM da c
 
 ## Capturas de Tela
 
+### Tela Inicial
+![Tela inicial da aplicação antes do carregamento de uma imagem](aplicacao.png)
+
 ### Visualização DICOM, Presets de Janela e Metadados
-![Aplicação com imagem DICOM carregada, preset Window/Level e tabela de metadados](aplicacao_imagem_carregada.png)
+![Aplicação com imagem DICOM carregada, preset Window Level / Window Width e tabela de metadados](aplicacao_imagem_carregada.png)
 
 ### Tratamento de Erros com Detalhes Técnicos
 ![Diálogo de erro amigável com detalhes técnicos recolhíveis](aplicacao_erro.png)
