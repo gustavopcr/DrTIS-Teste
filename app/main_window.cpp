@@ -17,32 +17,20 @@
 
 namespace {
 
-QString format_dicom_error(const dicom::Error &error)
+void show_dicom_error(QWidget *parent, const QString &title,
+                      const dicom::Error &error)
 {
-    QString summary;
-    switch (error.code) {
-        case dicom::ErrorCode::kFileNotFound:
-            summary = QObject::tr("The selected file could not be found.");
-            break;
-        case dicom::ErrorCode::kInvalidDicomFile:
-            summary = QObject::tr("The selected file is not a valid DICOM file.");
-            break;
-        case dicom::ErrorCode::kMissingImageData:
-            summary = QObject::tr("The DICOM file does not contain image pixel data.");
-            break;
-        case dicom::ErrorCode::kUnsupportedFormat:
-            summary = QObject::tr("This DICOM image format is not supported.");
-            break;
-        case dicom::ErrorCode::kRenderFailed:
-            summary = QObject::tr("Failed to render the DICOM image.");
-            break;
+    QMessageBox box(parent);
+    box.setIcon(QMessageBox::Warning);
+    box.setWindowTitle(title);
+    box.setText(error.message.empty()
+                    ? QObject::tr("An unexpected DICOM error occurred.")
+                    : QString::fromStdString(error.message));
+    if (!error.details.empty()) {
+        box.setDetailedText(QString::fromStdString(error.details));
     }
-
-    if (error.message.empty()) {
-        return summary;
-    }
-    return QString("%1\n\n%2: %3")
-        .arg(summary, QObject::tr("Details"), QString::fromStdString(error.message));
+    box.setStandardButtons(QMessageBox::Ok);
+    box.exec();
 }
 
 }  // namespace
@@ -90,16 +78,14 @@ void MainWindow::open_dicom_file()
     auto load_result = dicom::DicomImage::load_from_file(
         std::filesystem::path(file_path.toStdU16String()));
     if (const auto *error = std::get_if<dicom::Error>(&load_result)) {
-        QMessageBox::warning(this, tr("Invalid DICOM File"),
-                             format_dicom_error(*error));
+        show_dicom_error(this, tr("Unable to Open DICOM File"), *error);
         return;
     }
 
     dicom::DicomImage image = std::move(std::get<dicom::DicomImage>(load_result));
     auto render_result = image.render();
     if (const auto *error = std::get_if<dicom::Error>(&render_result)) {
-        QMessageBox::warning(this, tr("Failed to Render DICOM"),
-                             format_dicom_error(*error));
+        show_dicom_error(this, tr("Failed to Render DICOM"), *error);
         return;
     }
 

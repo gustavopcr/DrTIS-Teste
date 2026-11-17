@@ -6,6 +6,7 @@
 #include <utility>
 
 #include <dcmtk/config/osconfig.h>
+#include <dcmtk/dcmdata/dcerror.h>
 #include <dcmtk/dcmdata/dcfilefo.h>
 #include <dcmtk/dcmdata/dcistrmb.h>
 #include <dcmtk/dcmdata/dcrledrg.h>
@@ -34,27 +35,59 @@ void ensure_codecs_registered() {
   static const CodecGuard kGuard;
 }
 
-dicom::Error map_image_status_error(EI_Status status) {
-  const char* detail = ::DicomImage::getString(status);
-  const std::string message =
-      detail != nullptr ? detail : "Unknown DICOM image error";
+dicom::Error make_error(dicom::ErrorCode code, std::string details) {
+  switch (code) {
+    case dicom::ErrorCode::kFileNotFound:
+      return {code, "The selected file could not be found.", std::move(details)};
+    case dicom::ErrorCode::kInvalidDicomFile:
+      return {code, "The selected file is not a valid DICOM file.",
+              std::move(details)};
+    case dicom::ErrorCode::kMissingImageData:
+      return {code, "The DICOM file does not contain image pixel data.",
+              std::move(details)};
+    case dicom::ErrorCode::kUnsupportedFormat:
+      return {code, "This DICOM image format is not supported.",
+              std::move(details)};
+    case dicom::ErrorCode::kRenderFailed:
+      return {code, "Failed to render the DICOM image.", std::move(details)};
+  }
+  return {code, "An unexpected DICOM error occurred.", std::move(details)};
+}
+
+dicom::Error make_error(const OFCondition& status) {
+  const std::string details =
+      status.text() != nullptr ? status.text() : "Unknown DICOM parser error";
+
+  if (status == EC_UnsupportedEncoding || status == EC_UnknownTransferSyntax) {
+    return make_error(dicom::ErrorCode::kUnsupportedFormat, details);
+  }
+  if (status == EC_MissingAttribute) {
+    return make_error(dicom::ErrorCode::kMissingImageData, details);
+  }
+  return make_error(dicom::ErrorCode::kInvalidDicomFile, details);
+}
+
+dicom::Error make_error(EI_Status status) {
+  const char* status_text = ::DicomImage::getString(status);
+  const std::string details =
+      status_text != nullptr ? status_text : "Unknown DICOM image error";
 
   switch (status) {
     case EIS_MissingAttribute:
-      return dicom::Error{dicom::ErrorCode::kMissingImageData, message};
+      return make_error(dicom::ErrorCode::kMissingImageData, details);
     case EIS_NotSupportedValue:
-      return dicom::Error{dicom::ErrorCode::kUnsupportedFormat, message};
+      return make_error(dicom::ErrorCode::kUnsupportedFormat, details);
     case EIS_InvalidDocument:
     case EIS_InvalidValue:
     case EIS_InvalidImage:
-      return dicom::Error{dicom::ErrorCode::kInvalidDicomFile, message};
+      return make_error(dicom::ErrorCode::kInvalidDicomFile, details);
     case EIS_NoDataDictionary:
     case EIS_MemoryFailure:
     case EIS_OtherError:
     case EIS_Normal:
-      return dicom::Error{dicom::ErrorCode::kRenderFailed, message};
+      break;
   }
-  return dicom::Error{dicom::ErrorCode::kRenderFailed, message};
+  return make_error(dicom::ErrorCode::kRenderFailed, details);
 }
 
 void apply_default_voi(::DicomImage& image) {
@@ -77,7 +110,6 @@ void apply_default_voi(::DicomImage& image) {
 namespace dicom {
 
 struct DicomImage::Impl {
-  // Declared first so ::DicomImage is destroyed before the DcmFileFormat it references.
   DcmFileFormat file_format;
   std::unique_ptr<::DicomImage> dcm_image;
 };
@@ -91,22 +123,22 @@ DicomImage& DicomImage::operator=(DicomImage&&) noexcept = default;
 std::variant<DicomImage, Error> DicomImage::decode_image(
     std::unique_ptr<Impl> impl) {
   if (impl->file_format.getDataset() == nullptr) {
-    return Error{ErrorCode::kInvalidDicomFile,
-                 "DICOM file does not contain a dataset"};
+    return make_error(ErrorCode::kInvalidDicomFile,
+                      "DcmFileFormat::getDataset() returned nullptr");
   }
 
   impl->dcm_image =
       std::make_unique<::DicomImage>(&impl->file_format, EXS_Unknown);
   const EI_Status image_status = impl->dcm_image->getStatus();
   if (image_status != EIS_Normal) {
-    return map_image_status_error(image_status);
+    return make_error(image_status);
   }
 
   if (impl->dcm_image->getWidth() == 0UL ||
       impl->dcm_image->getHeight() == 0UL ||
       impl->dcm_image->getFrameCount() == 0UL) {
-    return Error{ErrorCode::kMissingImageData,
-                 "DICOM image has empty dimensions or zero frames"};
+    return make_error(ErrorCode::kMissingImageData,
+                      "Decoded image has zero width, height, or frame count");
   }
 
   apply_default_voi(*impl->dcm_image);
@@ -117,12 +149,14 @@ std::variant<DicomImage, Error> DicomImage::load_from_file(
     const std::filesystem::path& path) {
   std::error_code ec;
   if (!std::filesystem::exists(path, ec) || ec) {
-    return Error{ErrorCode::kFileNotFound,
-                 "File not found: " + path.string()};
+    return make_error(
+        ErrorCode::kFileNotFound,
+        ec ? ec.message() : ("File does not exist: " + path.string()));
   }
   if (!std::filesystem::is_regular_file(path, ec) || ec) {
-    return Error{ErrorCode::kInvalidDicomFile,
-                 "Path is not a regular file: " + path.string()};
+    return make_error(
+        ErrorCode::kInvalidDicomFile,
+        ec ? ec.message() : ("Path is not a regular file: " + path.string()));
   }
 
   ensure_codecs_registered();
@@ -130,7 +164,7 @@ std::variant<DicomImage, Error> DicomImage::load_from_file(
   auto impl = std::make_unique<Impl>();
   const OFCondition load_status = impl->file_format.loadFile(path.c_str());
   if (load_status.bad()) {
-    return Error{ErrorCode::kInvalidDicomFile, load_status.text()};
+    return make_error(load_status);
   }
 
   return decode_image(std::move(impl));
@@ -139,11 +173,12 @@ std::variant<DicomImage, Error> DicomImage::load_from_file(
 std::variant<DicomImage, Error> DicomImage::load_from_memory(
     const std::uint8_t* data, std::size_t size) {
   if (data == nullptr || size == 0U) {
-    return Error{ErrorCode::kInvalidDicomFile, "Memory buffer is empty"};
+    return make_error(ErrorCode::kInvalidDicomFile,
+                      "Memory buffer pointer is null or size is 0");
   }
   if (size > static_cast<std::size_t>(std::numeric_limits<offile_off_t>::max())) {
-    return Error{ErrorCode::kInvalidDicomFile,
-                 "Memory buffer exceeds maximum stream size"};
+    return make_error(ErrorCode::kInvalidDicomFile,
+                      "Memory buffer exceeds maximum stream size");
   }
 
   ensure_codecs_registered();
@@ -158,7 +193,7 @@ std::variant<DicomImage, Error> DicomImage::load_from_memory(
   impl->file_format.transferEnd();
 
   if (read_status.bad()) {
-    return Error{ErrorCode::kInvalidDicomFile, read_status.text()};
+    return make_error(read_status);
   }
 
   return decode_image(std::move(impl));
@@ -181,8 +216,8 @@ std::variant<ImageBuffer, Error> DicomImage::render() {
   const unsigned long byte_count =
       impl_->dcm_image->getOutputDataSize(kOutputBits);
   if (byte_count == 0UL) {
-    return Error{ErrorCode::kRenderFailed,
-                 "Failed to compute rendered pixel buffer size"};
+    return make_error(ErrorCode::kRenderFailed,
+                      "DicomImage::getOutputDataSize() returned 0");
   }
 
   ImageBuffer buffer{};
@@ -195,7 +230,11 @@ std::variant<ImageBuffer, Error> DicomImage::render() {
   const int ok = impl_->dcm_image->getOutputData(buffer.data.data(), byte_count,
                                                  kOutputBits);
   if (ok == 0) {
-    return Error{ErrorCode::kRenderFailed, "Failed to render DICOM image data"};
+    const EI_Status status = impl_->dcm_image->getStatus();
+    return status != EIS_Normal
+               ? make_error(status)
+               : make_error(ErrorCode::kRenderFailed,
+                            "DicomImage::getOutputData() returned 0");
   }
 
   return buffer;

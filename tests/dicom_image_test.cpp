@@ -47,7 +47,8 @@ class TempFile {
 DicomImage unwrap_image(std::variant<DicomImage, Error>&& result) {
   if (auto* err = std::get_if<Error>(&result)) {
     ADD_FAILURE() << "Expected DicomImage, got Error("
-                  << static_cast<int>(err->code) << "): " << err->message;
+                  << static_cast<int>(err->code) << "): " << err->message
+                  << " [" << err->details << "]";
     throw std::runtime_error(err->message);
   }
   return std::move(std::get<DicomImage>(result));
@@ -56,7 +57,8 @@ DicomImage unwrap_image(std::variant<DicomImage, Error>&& result) {
 ImageBuffer unwrap_buffer(std::variant<ImageBuffer, Error>&& result) {
   if (auto* err = std::get_if<Error>(&result)) {
     ADD_FAILURE() << "Expected ImageBuffer, got Error("
-                  << static_cast<int>(err->code) << "): " << err->message;
+                  << static_cast<int>(err->code) << "): " << err->message
+                  << " [" << err->details << "]";
     throw std::runtime_error(err->message);
   }
   return std::move(std::get<ImageBuffer>(result));
@@ -70,7 +72,8 @@ TEST(DicomImageLoadTest, LoadFromFileFailsWhenMissing) {
   ASSERT_TRUE(std::holds_alternative<Error>(result));
   const auto& err = std::get<Error>(result);
   EXPECT_EQ(err.code, ErrorCode::kFileNotFound);
-  EXPECT_FALSE(err.message.empty());
+  EXPECT_EQ(err.message, "The selected file could not be found.");
+  EXPECT_FALSE(err.details.empty());
 }
 
 TEST(DicomImageLoadTest, LoadFromFileFailsWhenPathIsDirectory) {
@@ -78,7 +81,10 @@ TEST(DicomImageLoadTest, LoadFromFileFailsWhenPathIsDirectory) {
       DicomImage::load_from_file(std::filesystem::temp_directory_path());
 
   ASSERT_TRUE(std::holds_alternative<Error>(result));
-  EXPECT_EQ(std::get<Error>(result).code, ErrorCode::kInvalidDicomFile);
+  const auto& err = std::get<Error>(result);
+  EXPECT_EQ(err.code, ErrorCode::kInvalidDicomFile);
+  EXPECT_EQ(err.message, "The selected file is not a valid DICOM file.");
+  EXPECT_FALSE(err.details.empty());
 }
 
 TEST(DicomImageLoadTest, LoadFromFileLoadsValidDicomFromDisk) {
@@ -100,21 +106,21 @@ TEST(DicomImageLoadTest, LoadFromFileLoadsValidDicomFromDisk) {
 }
 
 TEST(DicomImageLoadTest, LoadFromMemoryFailsOnNullOrEmptyBuffer) {
-  {
-    auto result = DicomImage::load_from_memory(nullptr, 0U);
+  const std::uint8_t dummy = 0x42U;
+  const std::pair<const std::uint8_t*, std::size_t> empty_cases[] = {
+      {nullptr, 0U},
+      {nullptr, 16U},
+      {&dummy, 0U},
+  };
+
+  for (const auto& [ptr, size] : empty_cases) {
+    SCOPED_TRACE("size=" + std::to_string(size));
+    auto result = DicomImage::load_from_memory(ptr, size);
     ASSERT_TRUE(std::holds_alternative<Error>(result));
-    EXPECT_EQ(std::get<Error>(result).code, ErrorCode::kInvalidDicomFile);
-  }
-  {
-    auto result = DicomImage::load_from_memory(nullptr, 16U);
-    ASSERT_TRUE(std::holds_alternative<Error>(result));
-    EXPECT_EQ(std::get<Error>(result).code, ErrorCode::kInvalidDicomFile);
-  }
-  {
-    const std::uint8_t dummy = 0x42U;
-    auto result = DicomImage::load_from_memory(&dummy, 0U);
-    ASSERT_TRUE(std::holds_alternative<Error>(result));
-    EXPECT_EQ(std::get<Error>(result).code, ErrorCode::kInvalidDicomFile);
+    const auto& err = std::get<Error>(result);
+    EXPECT_EQ(err.code, ErrorCode::kInvalidDicomFile);
+    EXPECT_EQ(err.message, "The selected file is not a valid DICOM file.");
+    EXPECT_FALSE(err.details.empty());
   }
 }
 
@@ -124,7 +130,10 @@ TEST(DicomImageLoadTest, LoadFromMemoryFailsOnGarbageBytes) {
       reinterpret_cast<const std::uint8_t*>(garbage.data()), garbage.size());
 
   ASSERT_TRUE(std::holds_alternative<Error>(result));
-  EXPECT_FALSE(std::get<Error>(result).message.empty());
+  const auto& err = std::get<Error>(result);
+  EXPECT_EQ(err.code, ErrorCode::kInvalidDicomFile);
+  EXPECT_EQ(err.message, "The selected file is not a valid DICOM file.");
+  EXPECT_FALSE(err.details.empty());
 }
 
 TEST(DicomImageLoadTest, LoadFromMemoryFailsOnTruncatedDicom) {
@@ -135,6 +144,10 @@ TEST(DicomImageLoadTest, LoadFromMemoryFailsOnTruncatedDicom) {
   auto result =
       DicomImage::load_from_memory(dcm_bytes.data(), dcm_bytes.size());
   ASSERT_TRUE(std::holds_alternative<Error>(result));
+  const auto& err = std::get<Error>(result);
+  EXPECT_EQ(err.code, ErrorCode::kInvalidDicomFile);
+  EXPECT_EQ(err.message, "The selected file is not a valid DICOM file.");
+  EXPECT_FALSE(err.details.empty());
 }
 
 TEST(DicomImageLoadTest, LoadFromMemoryFailsWhenPixelDataMissing) {
@@ -142,7 +155,10 @@ TEST(DicomImageLoadTest, LoadFromMemoryFailsWhenPixelDataMissing) {
   auto result = DicomImage::load_from_memory(sr_bytes.data(), sr_bytes.size());
 
   ASSERT_TRUE(std::holds_alternative<Error>(result));
-  EXPECT_EQ(std::get<Error>(result).code, ErrorCode::kMissingImageData);
+  const auto& err = std::get<Error>(result);
+  EXPECT_EQ(err.code, ErrorCode::kMissingImageData);
+  EXPECT_EQ(err.message, "The DICOM file does not contain image pixel data.");
+  EXPECT_FALSE(err.details.empty());
 }
 
 TEST(DicomImageRenderTest, RendersMonochrome2DimensionsAndGradient) {

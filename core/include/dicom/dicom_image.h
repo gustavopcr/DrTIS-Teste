@@ -21,6 +21,7 @@ enum class ErrorCode {
 struct Error {
   ErrorCode code;
   std::string message;
+  std::string details;
 };
 
 enum class ImageFormat {
