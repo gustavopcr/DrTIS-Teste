@@ -13,6 +13,7 @@
 #include <dcmtk/dcmdata/dcfilefo.h>
 #include <dcmtk/dcmdata/dcistrmb.h>
 #include <dcmtk/dcmdata/dcrledrg.h>
+#include <dcmtk/dcmdata/dcxfer.h>
 #include <dcmtk/dcmimage/diregist.h>
 #include <dcmtk/dcmimgle/dcmimage.h>
 #include <dcmtk/dcmjpeg/djdecode.h>
@@ -164,6 +165,62 @@ std::vector<dicom::WindowPreset> extract_window_presets(::DicomImage& image) {
   return presets;
 }
 
+std::string read_tag_string(DcmDataset& dataset, const DcmTagKey& key) {
+  OFString raw;
+  if (dataset.findAndGetOFStringArray(key, raw).bad()) {
+    return {};
+  }
+  return trim_ascii(raw.c_str());
+}
+
+std::string format_dicom_date(const std::string& raw) {
+  if (raw.size() != 8U) {
+    return raw;
+  }
+  for (auto  ch : raw) {
+    if (ch < '0' || ch > '9') {
+      return raw;
+    }
+  }
+  return raw.substr(0U, 4U) + "-" + raw.substr(4U, 2U) + "-" +
+         raw.substr(6U, 2U);
+}
+
+dicom::DicomMetadata extract_metadata(DcmDataset& dataset) {
+  dicom::DicomMetadata metadata;
+  metadata.patient_name = read_tag_string(dataset, DCM_PatientName);
+  metadata.patient_id = read_tag_string(dataset, DCM_PatientID);
+  metadata.study_date =
+      format_dicom_date(read_tag_string(dataset, DCM_StudyDate));
+  metadata.study_description = read_tag_string(dataset, DCM_StudyDescription);
+  metadata.series_description = read_tag_string(dataset, DCM_SeriesDescription);
+  metadata.modality = read_tag_string(dataset, DCM_Modality);
+  metadata.view_position = read_tag_string(dataset, DCM_ViewPosition);
+  metadata.laterality = read_tag_string(dataset, DCM_ImageLaterality);
+  metadata.patient_orientation =
+      read_tag_string(dataset, DCM_PatientOrientation);
+  metadata.photometric_interpretation =
+      read_tag_string(dataset, DCM_PhotometricInterpretation);
+  metadata.pixel_spacing = read_tag_string(dataset, DCM_PixelSpacing);
+
+  const DcmXfer xfer(dataset.getOriginalXfer());
+  if (xfer.getXferName() != nullptr) {
+    metadata.transfer_syntax = xfer.getXferName();
+  }
+
+  Uint16 bits_allocated = 0;
+  if (dataset.findAndGetUint16(DCM_BitsAllocated, bits_allocated).good()) {
+    metadata.bits_allocated = static_cast<int>(bits_allocated);
+  }
+
+  Uint16 bits_stored = 0;
+  if (dataset.findAndGetUint16(DCM_BitsStored, bits_stored).good()) {
+    metadata.bits_stored = static_cast<int>(bits_stored);
+  }
+
+  return metadata;
+}
+
 }  // namespace
 
 namespace dicom {
@@ -172,6 +229,7 @@ struct DicomImage::Impl {
   DcmFileFormat file_format;
   std::unique_ptr<::DicomImage> dcm_image;
   std::vector<WindowPreset> window_presets;
+  DicomMetadata metadata;
 };
 
 DicomImage::DicomImage(std::unique_ptr<Impl> impl) : impl_(std::move(impl)) {}
@@ -203,6 +261,7 @@ std::variant<DicomImage, Error> DicomImage::decode_image(
 
   apply_fov_orientation(*impl->file_format.getDataset(), *impl->dcm_image);
   impl->window_presets = extract_window_presets(*impl->dcm_image);
+  impl->metadata = extract_metadata(*impl->file_format.getDataset());
   apply_default_voi(*impl->dcm_image);
   return DicomImage(std::move(impl));
 }
@@ -287,6 +346,10 @@ std::optional<WindowLevel> DicomImage::get_window() const {
     return std::nullopt;
   }
   return WindowLevel{center, width};
+}
+
+const DicomMetadata& DicomImage::get_metadata() const {
+  return impl_->metadata;
 }
 
 std::optional<Error> DicomImage::apply_window_preset(std::size_t index) {

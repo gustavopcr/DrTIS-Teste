@@ -33,6 +33,7 @@ private slots:
 
 private:
     void populate_window_presets(const dicom::DicomImage &image);
+    void populate_metadata(const dicom::DicomImage &image);
     bool render_and_display(dicom::DicomImage &image, bool fit_view);
 
     Ui::MainWindow *ui;

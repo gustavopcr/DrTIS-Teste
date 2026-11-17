@@ -10,6 +10,7 @@
 #include <QFileDialog>
 #include <QGraphicsPixmapItem>
 #include <QGraphicsScene>
+#include <QHeaderView>
 #include <QImage>
 #include <QMessageBox>
 #include <QPainter>
@@ -17,6 +18,8 @@
 #include <QPushButton>
 #include <QResizeEvent>
 #include <QSignalBlocker>
+#include <QTableWidget>
+#include <QTableWidgetItem>
 
 namespace {
 
@@ -60,6 +63,13 @@ MainWindow::MainWindow(QWidget *parent)
     ui->graphicsView->setDragMode(QGraphicsView::ScrollHandDrag);
     ui->windowPresetcomboBox->setEnabled(false);
     ui->resetButton->setEnabled(false);
+    ui->metadataTableWidget->setColumnCount(2);
+    ui->metadataTableWidget->setHorizontalHeaderLabels(
+        {tr("Property"), tr("Value")});
+    ui->metadataTableWidget->verticalHeader()->setVisible(false);
+    ui->metadataTableWidget->horizontalHeader()->setSectionResizeMode(
+        0, QHeaderView::ResizeToContents);
+    ui->metadataTableWidget->setWordWrap(true);
 
     connect(ui->actionSelect_image, &QAction::triggered,
             this, &MainWindow::open_dicom_file);
@@ -108,6 +118,7 @@ void MainWindow::open_dicom_file()
 
     current_image_ = std::move(image);
     populate_window_presets(*current_image_);
+    populate_metadata(*current_image_);
 }
 
 void MainWindow::on_window_preset_changed(int index)
@@ -154,6 +165,57 @@ void MainWindow::populate_window_presets(const dicom::DicomImage &image)
 
     ui->windowPresetcomboBox->setEnabled(has_presets);
     ui->resetButton->setEnabled(has_presets);
+}
+
+void MainWindow::populate_metadata(const dicom::DicomImage &image)
+{
+    const dicom::DicomMetadata &meta = image.get_metadata();
+
+    struct Row {
+        QString label;
+        QString value;
+    };
+
+    const QString bits_value =
+        (meta.bits_stored > 0 && meta.bits_allocated > 0)
+            ? QString("%1 / %2").arg(meta.bits_stored).arg(meta.bits_allocated)
+            : QString();
+
+    const Row candidates[] = {
+        {tr("Modality"), QString::fromStdString(meta.modality)},
+        {tr("Dimensions"),
+         QString("%1 x %2").arg(image.get_width()).arg(image.get_height())},
+        {tr("Photometric"),
+         QString::fromStdString(meta.photometric_interpretation)},
+        {tr("Bits"), bits_value},
+        {tr("Transfer Syntax"), QString::fromStdString(meta.transfer_syntax)},
+        {tr("View Position"), QString::fromStdString(meta.view_position)},
+        {tr("Laterality"), QString::fromStdString(meta.laterality)},
+        {tr("Orientation"), QString::fromStdString(meta.patient_orientation)},
+        {tr("Pixel Spacing"), QString::fromStdString(meta.pixel_spacing)},
+        {tr("Patient Name"), QString::fromStdString(meta.patient_name)},
+        {tr("Patient ID"), QString::fromStdString(meta.patient_id)},
+        {tr("Study Date"), QString::fromStdString(meta.study_date)},
+        {tr("Study Desc."), QString::fromStdString(meta.study_description)},
+        {tr("Series Desc."), QString::fromStdString(meta.series_description)},
+    };
+
+    ui->metadataTableWidget->setRowCount(0);
+    for (const auto &row : candidates) {
+        if (row.value.isEmpty()) {
+            continue;
+        }
+        const int row_index = ui->metadataTableWidget->rowCount();
+        ui->metadataTableWidget->insertRow(row_index);
+
+        auto *label_item = new QTableWidgetItem(row.label);
+        auto *value_item = new QTableWidgetItem(row.value);
+        value_item->setToolTip(row.value);
+
+        ui->metadataTableWidget->setItem(row_index, 0, label_item);
+        ui->metadataTableWidget->setItem(row_index, 1, value_item);
+    }
+    ui->metadataTableWidget->resizeRowsToContents();
 }
 
 bool MainWindow::render_and_display(dicom::DicomImage &image, bool fit_view)

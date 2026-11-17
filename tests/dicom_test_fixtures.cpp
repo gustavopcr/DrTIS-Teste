@@ -244,4 +244,22 @@ std::vector<std::uint8_t> make_rgb_24bit_dcm(
   return serialize_dicom(file_format, EXS_LittleEndianExplicit);
 }
 
+std::vector<std::uint8_t> make_metadata_rich_dcm(
+    int width, int height, const std::vector<std::uint8_t>& pixels) {
+  DcmFileFormat file_format = build_monochrome_8bit_file_format(
+      width, height, pixels, /*monochrome1=*/false, std::nullopt, std::nullopt);
+  DcmDataset* dataset = file_format.getDataset();
+  dataset->putAndInsertString(DCM_PatientName, "Doe^Jane");
+  dataset->putAndInsertString(DCM_PatientID, "P-0042");
+  dataset->putAndInsertString(DCM_StudyDate, "20240315");
+  dataset->putAndInsertString(DCM_StudyDescription, "Screening Mammo");
+  dataset->putAndInsertString(DCM_SeriesDescription, "L MLO");
+  dataset->putAndInsertString(DCM_Modality, "MG");
+  dataset->putAndInsertString(DCM_ViewPosition, "MLO");
+  dataset->putAndInsertString(DCM_ImageLaterality, "L");
+  dataset->putAndInsertString(DCM_PatientOrientation, "A\\FR");
+  dataset->putAndInsertString(DCM_PixelSpacing, "0.07\\0.07");
+  return serialize_dicom(file_format, EXS_LittleEndianExplicit);
+}
+
 }  // namespace dicom::test

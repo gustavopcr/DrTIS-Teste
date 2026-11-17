@@ -429,6 +429,54 @@ TEST(DicomImageWindowTest, AppliesPresetUpdatesPixelsAndResetsToDefault) {
   EXPECT_EQ(restored_buffer.data, wide_buffer.data);
 }
 
+TEST(DicomImageMetadataTest, ExtractsClinicalTagsAndFormatsStudyDate) {
+  // Verifies clinical, orientation, encoding, and YYYY-MM-DD formatted date tags
+  // are extracted cleanly without trailing DICOM padding spaces.
+  const auto dcm_bytes =
+      test::make_metadata_rich_dcm(/*width=*/2, /*height=*/2, {0U, 85U, 170U, 255U});
+  const DicomImage image = unwrap_image(
+      DicomImage::load_from_memory(dcm_bytes.data(), dcm_bytes.size()));
+
+  const DicomMetadata& meta = image.get_metadata();
+  EXPECT_EQ(meta.patient_name, "Doe^Jane");
+  EXPECT_EQ(meta.patient_id, "P-0042");
+  EXPECT_EQ(meta.study_date, "2024-03-15");
+  EXPECT_EQ(meta.study_description, "Screening Mammo");
+  EXPECT_EQ(meta.series_description, "L MLO");
+  EXPECT_EQ(meta.modality, "MG");
+  EXPECT_EQ(meta.view_position, "MLO");
+  EXPECT_EQ(meta.laterality, "L");
+  EXPECT_EQ(meta.patient_orientation, "A\\FR");
+  EXPECT_EQ(meta.photometric_interpretation, "MONOCHROME2");
+  EXPECT_EQ(meta.pixel_spacing, "0.07\\0.07");
+  EXPECT_EQ(meta.bits_allocated, 8);
+  EXPECT_EQ(meta.bits_stored, 8);
+  EXPECT_EQ(meta.transfer_syntax, "Little Endian Explicit");
+}
+
+TEST(DicomImageMetadataTest, LeavesAbsentTagsEmptyAndReportsCompressedXfer) {
+  // Minimal compressed DICOM omits optional study/series/mammo fields;
+  // absent tags must remain empty while bits and transfer syntax still populate.
+  const std::vector<std::uint8_t> pixels(64U, 128U);
+  const auto dcm_bytes = test::make_jpeg_lossless_8bit_dcm(8, 8, pixels);
+  const DicomImage image = unwrap_image(
+      DicomImage::load_from_memory(dcm_bytes.data(), dcm_bytes.size()));
+
+  const DicomMetadata& meta = image.get_metadata();
+  EXPECT_EQ(meta.patient_name, "Test^Patient");
+  EXPECT_TRUE(meta.patient_id.empty());
+  EXPECT_TRUE(meta.study_date.empty());
+  EXPECT_TRUE(meta.view_position.empty());
+  EXPECT_TRUE(meta.laterality.empty());
+  EXPECT_TRUE(meta.patient_orientation.empty());
+  EXPECT_TRUE(meta.pixel_spacing.empty());
+  EXPECT_EQ(meta.modality, "OT");
+  EXPECT_EQ(meta.photometric_interpretation, "MONOCHROME2");
+  EXPECT_EQ(meta.bits_allocated, 8);
+  EXPECT_EQ(meta.bits_stored, 8);
+  EXPECT_NE(meta.transfer_syntax.find("JPEG Lossless"), std::string::npos);
+}
+
 TEST(DicomImageLifecycleTest, SupportsMoveConstructionAndAssignment) {
   const std::vector<std::uint8_t> pixels = {10U, 200U};
   const auto dcm_bytes = test::make_monochrome_8bit_dcm(2, 1, pixels);

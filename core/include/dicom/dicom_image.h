@@ -47,6 +47,23 @@ struct WindowPreset {
   WindowLevel window;
 };
 
+struct DicomMetadata {
+  std::string patient_name;
+  std::string patient_id;
+  std::string study_date;
+  std::string study_description;
+  std::string series_description;
+  std::string modality;
+  std::string view_position;
+  std::string laterality;
+  std::string patient_orientation;
+  std::string photometric_interpretation;
+  std::string pixel_spacing;
+  std::string transfer_syntax;
+  int bits_allocated = 0;
+  int bits_stored = 0;
+};
+
 class DicomImage {
  public:
   static std::variant<DicomImage, Error> load_from_file(
@@ -65,6 +82,7 @@ class DicomImage {
   bool is_monochrome() const;
   const std::vector<WindowPreset>& get_window_presets() const;
   std::optional<WindowLevel> get_window() const;
+  const DicomMetadata& get_metadata() const;
 
   std::optional<Error> apply_window_preset(std::size_t index);
   void reset_window();

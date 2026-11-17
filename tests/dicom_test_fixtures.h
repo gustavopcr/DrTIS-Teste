@@ -45,4 +45,7 @@ std::vector<std::uint8_t> make_jpeg_lossless_8bit_dcm(
 std::vector<std::uint8_t> make_rgb_24bit_dcm(
     int width, int height, const std::vector<std::uint8_t>& rgb_pixels);
 
+std::vector<std::uint8_t> make_metadata_rich_dcm(
+    int width, int height, const std::vector<std::uint8_t>& pixels);
+
 }  // namespace dicom::test
