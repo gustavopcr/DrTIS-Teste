@@ -66,3 +66,8 @@ vcpkg_installed/
 # test output & cache
 Testing/
 .cache/
+
+# Qt Creator / Qt Designer
+.qtcreator/
+*.autosave
+CMakeLists.txt.user*
