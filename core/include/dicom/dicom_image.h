@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <memory>
+#include <optional>
 #include <string>
 #include <variant>
 #include <vector>
@@ -36,6 +37,16 @@ struct ImageBuffer {
   std::vector<std::uint8_t> data;
 };
 
+struct WindowLevel {
+  double center = 0.0;
+  double width = 1.0;
+};
+
+struct WindowPreset {
+  std::string explanation;
+  WindowLevel window;
+};
+
 class DicomImage {
  public:
   static std::variant<DicomImage, Error> load_from_file(
@@ -52,6 +63,11 @@ class DicomImage {
   int get_width() const;
   int get_height() const;
   bool is_monochrome() const;
+  const std::vector<WindowPreset>& get_window_presets() const;
+  std::optional<WindowLevel> get_window() const;
+
+  std::optional<Error> apply_window_preset(std::size_t index);
+  void reset_window();
 
   std::variant<ImageBuffer, Error> render();
 

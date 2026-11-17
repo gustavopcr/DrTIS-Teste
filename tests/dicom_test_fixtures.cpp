@@ -113,6 +113,32 @@ DcmFileFormat build_monochrome_8bit_file_format(
   return file_format;
 }
 
+DcmFileFormat build_monochrome_16bit_file_format(
+    int width, int height, int bits_stored, bool is_signed,
+    const std::vector<std::uint16_t>& pixels,
+    std::optional<double> window_center, std::optional<double> window_width,
+    std::optional<double> rescale_slope,
+    std::optional<double> rescale_intercept) {
+  DcmFileFormat file_format;
+  DcmDataset* dataset = file_format.getDataset();
+  populate_common_sop_tags(*dataset, UID_CTImageStorage);
+
+  dataset->putAndInsertString(DCM_Modality, "CT");
+  dataset->putAndInsertUint16(DCM_SamplesPerPixel, 1);
+  dataset->putAndInsertString(DCM_PhotometricInterpretation, "MONOCHROME2");
+  dataset->putAndInsertUint16(DCM_Rows, static_cast<Uint16>(height));
+  dataset->putAndInsertUint16(DCM_Columns, static_cast<Uint16>(width));
+  dataset->putAndInsertUint16(DCM_BitsAllocated, 16);
+  dataset->putAndInsertUint16(DCM_BitsStored, static_cast<Uint16>(bits_stored));
+  dataset->putAndInsertUint16(DCM_HighBit, static_cast<Uint16>(bits_stored - 1));
+  dataset->putAndInsertUint16(DCM_PixelRepresentation, is_signed ? 1 : 0);
+  populate_window_and_rescale(*dataset, window_center, window_width,
+                              rescale_slope, rescale_intercept);
+  dataset->putAndInsertUint16Array(DCM_PixelData, pixels.data(),
+                                   static_cast<unsigned long>(pixels.size()));
+  return file_format;
+}
+
 }  // namespace
 
 std::vector<std::uint8_t> make_header_only_sr_dcm() {
@@ -156,23 +182,26 @@ std::vector<std::uint8_t> make_monochrome_16bit_dcm(
     std::optional<double> window_center, std::optional<double> window_width,
     std::optional<double> rescale_slope,
     std::optional<double> rescale_intercept) {
-  DcmFileFormat file_format;
-  DcmDataset* dataset = file_format.getDataset();
-  populate_common_sop_tags(*dataset, UID_CTImageStorage);
+  DcmFileFormat file_format = build_monochrome_16bit_file_format(
+      width, height, bits_stored, is_signed, pixels, window_center,
+      window_width, rescale_slope, rescale_intercept);
+  return serialize_dicom(file_format, EXS_LittleEndianExplicit);
+}
 
-  dataset->putAndInsertString(DCM_Modality, "CT");
-  dataset->putAndInsertUint16(DCM_SamplesPerPixel, 1);
-  dataset->putAndInsertString(DCM_PhotometricInterpretation, "MONOCHROME2");
-  dataset->putAndInsertUint16(DCM_Rows, static_cast<Uint16>(height));
-  dataset->putAndInsertUint16(DCM_Columns, static_cast<Uint16>(width));
-  dataset->putAndInsertUint16(DCM_BitsAllocated, 16);
-  dataset->putAndInsertUint16(DCM_BitsStored, static_cast<Uint16>(bits_stored));
-  dataset->putAndInsertUint16(DCM_HighBit, static_cast<Uint16>(bits_stored - 1));
-  dataset->putAndInsertUint16(DCM_PixelRepresentation, is_signed ? 1 : 0);
-  populate_window_and_rescale(*dataset, window_center, window_width,
-                              rescale_slope, rescale_intercept);
-  dataset->putAndInsertUint16Array(DCM_PixelData, pixels.data(),
-                                   static_cast<unsigned long>(pixels.size()));
+std::vector<std::uint8_t> make_window_presets_16bit_dcm(
+    int width, int height, const std::vector<std::uint16_t>& pixels,
+    const std::string& window_centers, const std::string& window_widths,
+    std::optional<std::string> window_explanations) {
+  DcmFileFormat file_format = build_monochrome_16bit_file_format(
+      width, height, /*bits_stored=*/12, /*is_signed=*/false, pixels,
+      std::nullopt, std::nullopt, std::nullopt, std::nullopt);
+  DcmDataset* dataset = file_format.getDataset();
+  dataset->putAndInsertString(DCM_WindowCenter, window_centers.c_str());
+  dataset->putAndInsertString(DCM_WindowWidth, window_widths.c_str());
+  if (window_explanations.has_value()) {
+    dataset->putAndInsertString(DCM_WindowCenterWidthExplanation,
+                                window_explanations->c_str());
+  }
   return serialize_dicom(file_format, EXS_LittleEndianExplicit);
 }
 

@@ -28,9 +28,12 @@ protected:
 
 private slots:
     void open_dicom_file();
+    void on_window_preset_changed(int index);
+    void on_reset_window_clicked();
 
 private:
-    void display_buffer(const dicom::ImageBuffer &buffer, bool is_monochrome);
+    void populate_window_presets(const dicom::DicomImage &image);
+    bool render_and_display(dicom::DicomImage &image, bool fit_view);
 
     Ui::MainWindow *ui;
     QGraphicsScene *scene_ = nullptr;

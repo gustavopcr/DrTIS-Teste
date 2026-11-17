@@ -126,6 +126,44 @@ void apply_fov_orientation(DcmDataset& dataset, ::DicomImage& image) {
   }
 }
 
+std::string trim_ascii(const char* text) {
+  if (text == nullptr) {
+    return {};
+  }
+  const std::string raw(text);
+  const std::size_t first = raw.find_first_not_of(" \t\r\n");
+  if (first == std::string::npos) {
+    return {};
+  }
+  const std::size_t last = raw.find_last_not_of(" \t\r\n");
+  return raw.substr(first, last - first + 1U);
+}
+
+std::vector<dicom::WindowPreset> extract_window_presets(::DicomImage& image) {
+  std::vector<dicom::WindowPreset> presets;
+  if (!image.isMonochrome()) {
+    return presets;
+  }
+
+  const unsigned long count = image.getWindowCount();
+  presets.reserve(static_cast<std::size_t>(count));
+  for (unsigned long i = 0UL; i < count; ++i) {
+    if (image.setWindow(i) == 0) {
+      continue;
+    }
+    double center = 0.0;
+    double width = 1.0;
+    if (image.getWindow(center, width) == 0) {
+      continue;
+    }
+    OFString explanation_raw;
+    const char* explanation_ptr = image.getVoiWindowExplanation(i, explanation_raw);
+    presets.push_back(dicom::WindowPreset{
+        trim_ascii(explanation_ptr), dicom::WindowLevel{center, width}});
+  }
+  return presets;
+}
+
 }  // namespace
 
 namespace dicom {
@@ -133,6 +171,7 @@ namespace dicom {
 struct DicomImage::Impl {
   DcmFileFormat file_format;
   std::unique_ptr<::DicomImage> dcm_image;
+  std::vector<WindowPreset> window_presets;
 };
 
 DicomImage::DicomImage(std::unique_ptr<Impl> impl) : impl_(std::move(impl)) {}
@@ -163,6 +202,7 @@ std::variant<DicomImage, Error> DicomImage::decode_image(
   }
 
   apply_fov_orientation(*impl->file_format.getDataset(), *impl->dcm_image);
+  impl->window_presets = extract_window_presets(*impl->dcm_image);
   apply_default_voi(*impl->dcm_image);
   return DicomImage(std::move(impl));
 }
@@ -231,6 +271,41 @@ int DicomImage::get_width() const {
 
 bool DicomImage::is_monochrome() const {
   return impl_->dcm_image->isMonochrome() != 0;
+}
+
+const std::vector<WindowPreset>& DicomImage::get_window_presets() const {
+  return impl_->window_presets;
+}
+
+std::optional<WindowLevel> DicomImage::get_window() const {
+  if (!is_monochrome()) {
+    return std::nullopt;
+  }
+  double center = 0.0;
+  double width = 1.0;
+  if (impl_->dcm_image->getWindow(center, width) == 0) {
+    return std::nullopt;
+  }
+  return WindowLevel{center, width};
+}
+
+std::optional<Error> DicomImage::apply_window_preset(std::size_t index) {
+  if (!is_monochrome()) {
+    return make_error(ErrorCode::kUnsupportedFormat,
+                      "Window presets require a monochrome DICOM image");
+  }
+  if (index >= impl_->window_presets.size()) {
+    return make_error(ErrorCode::kRenderFailed,
+                      "Window preset index out of range");
+  }
+  if (impl_->dcm_image->setWindow(static_cast<unsigned long>(index)) == 0) {
+    return make_error(impl_->dcm_image->getStatus());
+  }
+  return std::nullopt;
+}
+
+void DicomImage::reset_window() {
+  apply_default_voi(*impl_->dcm_image);
 }
 
 std::variant<ImageBuffer, Error> DicomImage::render() {

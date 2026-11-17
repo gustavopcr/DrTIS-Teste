@@ -330,6 +330,105 @@ TEST(DicomImageRenderTest, PreservesPixelsWhenOrientationTagsAreNeutral) {
   EXPECT_EQ(buffer.data, pixels);
 }
 
+TEST(DicomImageWindowTest, ReturnsEmptyPresetsWhenAbsentOrRgb) {
+  const auto mono_no_window = test::make_monochrome_8bit_dcm(
+      /*width=*/2, /*height=*/1, {0U, 255U});
+  DicomImage mono = unwrap_image(DicomImage::load_from_memory(
+      mono_no_window.data(), mono_no_window.size()));
+  EXPECT_TRUE(mono.get_window_presets().empty());
+  // Monochrome images without embedded presets still compute an active Min/Max display window.
+  ASSERT_TRUE(mono.get_window().has_value());
+  EXPECT_GT(mono.get_window()->width, 0.0);
+
+  const auto rgb_bytes =
+      test::make_rgb_24bit_dcm(/*width=*/2, /*height=*/1,
+                               {255U, 0U, 0U, 0U, 255U, 0U});
+  DicomImage rgb = unwrap_image(
+      DicomImage::load_from_memory(rgb_bytes.data(), rgb_bytes.size()));
+  EXPECT_TRUE(rgb.get_window_presets().empty());
+  EXPECT_FALSE(rgb.get_window().has_value());
+
+  const auto err = rgb.apply_window_preset(0U);
+  ASSERT_TRUE(err.has_value());
+  EXPECT_EQ(err->code, ErrorCode::kUnsupportedFormat);
+}
+
+TEST(DicomImageWindowTest, ReadsEmbeddedPresetsWithAndWithoutExplanations) {
+  const std::vector<std::uint16_t> pixels = {0U, 1000U, 2500U, 4095U};
+
+  const auto labeled_dcm = test::make_window_presets_16bit_dcm(
+      /*width=*/4, /*height=*/1, pixels,
+      "3091\\3145\\3181", "1150\\1000\\850", "SOFTER\\NORMAL\\HARDER");
+  const DicomImage labeled = unwrap_image(
+      DicomImage::load_from_memory(labeled_dcm.data(), labeled_dcm.size()));
+  const auto& presets = labeled.get_window_presets();
+  ASSERT_EQ(presets.size(), 3U);
+  EXPECT_EQ(presets[0].explanation, "SOFTER");
+  EXPECT_DOUBLE_EQ(presets[0].window.center, 3091.0);
+  EXPECT_DOUBLE_EQ(presets[0].window.width, 1150.0);
+  EXPECT_EQ(presets[1].explanation, "NORMAL");
+  EXPECT_DOUBLE_EQ(presets[1].window.center, 3145.0);
+  EXPECT_DOUBLE_EQ(presets[1].window.width, 1000.0);
+  EXPECT_EQ(presets[2].explanation, "HARDER");
+  EXPECT_DOUBLE_EQ(presets[2].window.center, 3181.0);
+  EXPECT_DOUBLE_EQ(presets[2].window.width, 850.0);
+
+  // When optional (0028,1055) explanation tag is omitted, core preserves ""
+  // rather than inventing labels so the UI can format Center / Width.
+  const auto unlabeled_dcm = test::make_window_presets_16bit_dcm(
+      /*width=*/4, /*height=*/1, pixels, "40", "400");
+  DicomImage single_unlabeled = unwrap_image(DicomImage::load_from_memory(
+      unlabeled_dcm.data(), unlabeled_dcm.size()));
+  ASSERT_EQ(single_unlabeled.get_window_presets().size(), 1U);
+  EXPECT_TRUE(single_unlabeled.get_window_presets()[0].explanation.empty());
+  EXPECT_DOUBLE_EQ(single_unlabeled.get_window_presets()[0].window.center, 40.0);
+  EXPECT_DOUBLE_EQ(single_unlabeled.get_window_presets()[0].window.width, 400.0);
+  EXPECT_FALSE(single_unlabeled.apply_window_preset(0U).has_value());
+}
+
+TEST(DicomImageWindowTest, AppliesPresetUpdatesPixelsAndResetsToDefault) {
+  // Preset 0 covers [0..4000] smoothly; preset 1 narrows to [2400..2600] so
+  // 2000 clamps to 0 and 3000 clamps to 255.
+  const std::vector<std::uint16_t> pixels = {0U, 2000U, 3000U, 4000U};
+  const auto dcm_bytes = test::make_window_presets_16bit_dcm(
+      /*width=*/4, /*height=*/1, pixels,
+      "2000\\2500", "4000\\200", "WIDE\\NARROW");
+
+  DicomImage image = unwrap_image(
+      DicomImage::load_from_memory(dcm_bytes.data(), dcm_bytes.size()));
+
+  const auto initial_window = image.get_window();
+  ASSERT_TRUE(initial_window.has_value());
+  EXPECT_DOUBLE_EQ(initial_window->center, 2000.0);
+  EXPECT_DOUBLE_EQ(initial_window->width, 4000.0);
+  const ImageBuffer wide_buffer = unwrap_buffer(image.render());
+  EXPECT_GT(wide_buffer.data[1], 100U);
+  EXPECT_LT(wide_buffer.data[2], 220U);
+
+  ASSERT_FALSE(image.apply_window_preset(1U).has_value());
+  const auto narrow_window = image.get_window();
+  ASSERT_TRUE(narrow_window.has_value());
+  EXPECT_DOUBLE_EQ(narrow_window->center, 2500.0);
+  EXPECT_DOUBLE_EQ(narrow_window->width, 200.0);
+  const ImageBuffer narrow_buffer = unwrap_buffer(image.render());
+  EXPECT_EQ(narrow_buffer.data[1], 0U);
+  EXPECT_EQ(narrow_buffer.data[2], 255U);
+
+  const auto out_of_range = image.apply_window_preset(99U);
+  ASSERT_TRUE(out_of_range.has_value());
+  EXPECT_EQ(out_of_range->code, ErrorCode::kRenderFailed);
+  EXPECT_FALSE(out_of_range->message.empty());
+  EXPECT_FALSE(out_of_range->details.empty());
+
+  image.reset_window();
+  const auto reset_window = image.get_window();
+  ASSERT_TRUE(reset_window.has_value());
+  EXPECT_DOUBLE_EQ(reset_window->center, 2000.0);
+  EXPECT_DOUBLE_EQ(reset_window->width, 4000.0);
+  const ImageBuffer restored_buffer = unwrap_buffer(image.render());
+  EXPECT_EQ(restored_buffer.data, wide_buffer.data);
+}
+
 TEST(DicomImageLifecycleTest, SupportsMoveConstructionAndAssignment) {
   const std::vector<std::uint8_t> pixels = {10U, 200U};
   const auto dcm_bytes = test::make_monochrome_8bit_dcm(2, 1, pixels);

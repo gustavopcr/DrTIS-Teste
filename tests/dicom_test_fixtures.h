@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <optional>
+#include <string>
 #include <vector>
 
 namespace dicom::test {
@@ -30,6 +31,11 @@ std::vector<std::uint8_t> make_monochrome_16bit_dcm(
     std::optional<double> window_width = std::nullopt,
     std::optional<double> rescale_slope = std::nullopt,
     std::optional<double> rescale_intercept = std::nullopt);
+
+std::vector<std::uint8_t> make_window_presets_16bit_dcm(
+    int width, int height, const std::vector<std::uint16_t>& pixels,
+    const std::string& window_centers, const std::string& window_widths,
+    std::optional<std::string> window_explanations = std::nullopt);
 
 // Builds an 8-bit monochrome DICOM compressed with JPEG Lossless (Process 14 SV1).
 std::vector<std::uint8_t> make_jpeg_lossless_8bit_dcm(
