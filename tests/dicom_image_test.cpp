@@ -278,6 +278,58 @@ TEST(DicomImageRenderTest, RendersRgb24WithCorrectChannelOrder) {
   EXPECT_EQ(buffer.data, rgb_pixels);
 }
 
+TEST(DicomImageRenderTest, AppliesFieldOfViewRotation90Degrees) {
+  // 3x2 source grid [0, 51, 102 / 153, 204, 255] rotated 90 deg clockwise ->
+  // 2x3 grid [153, 0 / 204, 51 / 255, 102].
+  const std::vector<std::uint8_t> pixels = {0U, 51U, 102U, 153U, 204U, 255U};
+  const auto dcm_bytes = test::make_oriented_monochrome_8bit_dcm(
+      /*width=*/3, /*height=*/2, pixels, /*fov_rotation=*/90.0);
+
+  DicomImage image = unwrap_image(
+      DicomImage::load_from_memory(dcm_bytes.data(), dcm_bytes.size()));
+  EXPECT_EQ(image.get_width(), 2);
+  EXPECT_EQ(image.get_height(), 3);
+
+  const ImageBuffer buffer = unwrap_buffer(image.render());
+  EXPECT_EQ(buffer.width, 2);
+  EXPECT_EQ(buffer.height, 3);
+  const std::vector<std::uint8_t> expected = {153U, 0U, 204U, 51U, 255U, 102U};
+  EXPECT_EQ(buffer.data, expected);
+}
+
+TEST(DicomImageRenderTest, AppliesFieldOfViewHorizontalFlip) {
+  // 3x2 source grid [0, 51, 102 / 153, 204, 255] flipped horizontally ->
+  // [102, 51, 0 / 255, 204, 153].
+  const std::vector<std::uint8_t> pixels = {0U, 51U, 102U, 153U, 204U, 255U};
+  const auto dcm_bytes = test::make_oriented_monochrome_8bit_dcm(
+      /*width=*/3, /*height=*/2, pixels, std::nullopt, "YES");
+
+  DicomImage image = unwrap_image(
+      DicomImage::load_from_memory(dcm_bytes.data(), dcm_bytes.size()));
+  EXPECT_EQ(image.get_width(), 3);
+  EXPECT_EQ(image.get_height(), 2);
+
+  const ImageBuffer buffer = unwrap_buffer(image.render());
+  EXPECT_EQ(buffer.width, 3);
+  EXPECT_EQ(buffer.height, 2);
+  const std::vector<std::uint8_t> expected = {102U, 51U, 0U, 255U, 204U, 153U};
+  EXPECT_EQ(buffer.data, expected);
+}
+
+TEST(DicomImageRenderTest, PreservesPixelsWhenOrientationTagsAreNeutral) {
+  const std::vector<std::uint8_t> pixels = {0U, 51U, 102U, 153U, 204U, 255U};
+  const auto dcm_bytes = test::make_oriented_monochrome_8bit_dcm(
+      /*width=*/3, /*height=*/2, pixels, /*fov_rotation=*/0.0, "NO");
+
+  DicomImage image = unwrap_image(
+      DicomImage::load_from_memory(dcm_bytes.data(), dcm_bytes.size()));
+  EXPECT_EQ(image.get_width(), 3);
+  EXPECT_EQ(image.get_height(), 2);
+
+  const ImageBuffer buffer = unwrap_buffer(image.render());
+  EXPECT_EQ(buffer.data, pixels);
+}
+
 TEST(DicomImageLifecycleTest, SupportsMoveConstructionAndAssignment) {
   const std::vector<std::uint8_t> pixels = {10U, 200U};
   const auto dcm_bytes = test::make_monochrome_8bit_dcm(2, 1, pixels);

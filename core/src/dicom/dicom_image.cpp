@@ -1,11 +1,14 @@
 #include "dicom/dicom_image.h"
 
+#include <cmath>
 #include <limits>
 #include <memory>
 #include <system_error>
 #include <utility>
 
 #include <dcmtk/config/osconfig.h>
+#include <dcmtk/dcmdata/dcdatset.h>
+#include <dcmtk/dcmdata/dcdeftag.h>
 #include <dcmtk/dcmdata/dcerror.h>
 #include <dcmtk/dcmdata/dcfilefo.h>
 #include <dcmtk/dcmdata/dcistrmb.h>
@@ -105,6 +108,24 @@ void apply_default_voi(::DicomImage& image) {
   image.setMinMaxWindow();
 }
 
+void apply_fov_orientation(DcmDataset& dataset, ::DicomImage& image) {
+  Float64 rotation = 0.0;
+  if (dataset.findAndGetFloat64(DCM_FieldOfViewRotation, rotation).good() &&
+      std::isfinite(rotation) && std::abs(rotation) <= 360.0) {
+    const int degrees = static_cast<int>(std::lround(rotation)) % 360;
+    if (degrees != 0 && degrees % 90 == 0) {
+      image.rotateImage(degrees);
+    }
+  }
+
+  OFString horizontal_flip;
+  if (dataset.findAndGetOFString(DCM_FieldOfViewHorizontalFlip, horizontal_flip)
+          .good() &&
+      horizontal_flip == "YES") {
+    image.flipImage(1, 0);
+  }
+}
+
 }  // namespace
 
 namespace dicom {
@@ -141,6 +162,7 @@ std::variant<DicomImage, Error> DicomImage::decode_image(
                       "Decoded image has zero width, height, or frame count");
   }
 
+  apply_fov_orientation(*impl->file_format.getDataset(), *impl->dcm_image);
   apply_default_voi(*impl->dcm_image);
   return DicomImage(std::move(impl));
 }

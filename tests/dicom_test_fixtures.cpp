@@ -132,6 +132,24 @@ std::vector<std::uint8_t> make_monochrome_8bit_dcm(
   return serialize_dicom(file_format, EXS_LittleEndianExplicit);
 }
 
+std::vector<std::uint8_t> make_oriented_monochrome_8bit_dcm(
+    int width, int height, const std::vector<std::uint8_t>& pixels,
+    std::optional<double> fov_rotation,
+    std::optional<const char*> fov_horizontal_flip) {
+  DcmFileFormat file_format = build_monochrome_8bit_file_format(
+      width, height, pixels, /*monochrome1=*/false, std::nullopt, std::nullopt);
+  DcmDataset* dataset = file_format.getDataset();
+  if (fov_rotation.has_value()) {
+    dataset->putAndInsertString(DCM_FieldOfViewRotation,
+                               std::to_string(*fov_rotation).c_str());
+  }
+  if (fov_horizontal_flip.has_value()) {
+    dataset->putAndInsertString(DCM_FieldOfViewHorizontalFlip,
+                               *fov_horizontal_flip);
+  }
+  return serialize_dicom(file_format, EXS_LittleEndianExplicit);
+}
+
 std::vector<std::uint8_t> make_monochrome_16bit_dcm(
     int width, int height, int bits_stored, bool is_signed,
     const std::vector<std::uint16_t>& pixels,
