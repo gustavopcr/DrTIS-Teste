@@ -20,6 +20,22 @@
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release"
       }
+    },
+    {
+      "name": "gui-debug",
+      "displayName": "Full App + Qt6 GUI (Debug)",
+      "inherits": "core-debug",
+      "cacheVariables": {
+        "BUILD_GUI": "ON"
+      }
+    },
+    {
+      "name": "gui-release",
+      "displayName": "Full App + Qt6 GUI (Release)",
+      "inherits": "gui-debug",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release"
+      }
     }
   ],
   "buildPresets": [
@@ -30,6 +46,14 @@
     {
       "name": "core-release",
       "configurePreset": "core-release"
+    },
+    {
+      "name": "gui-debug",
+      "configurePreset": "gui-debug"
+    },
+    {
+      "name": "gui-release",
+      "configurePreset": "gui-release"
     }
   ],
   "testPresets": [
@@ -43,6 +67,20 @@
     {
       "name": "core-release",
       "configurePreset": "core-release",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "gui-debug",
+      "configurePreset": "gui-debug",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "gui-release",
+      "configurePreset": "gui-release",
       "output": {
         "outputOnFailure": true
       }

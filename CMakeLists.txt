@@ -14,7 +14,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 # Generate compile_commands.json for IDE / clangd tooling.
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-option(BUILD_GUI "Build the Qt6 GUI application" OFF)
+option(BUILD_GUI "Build the Qt6 GUI application" ON)
 option(BUILD_TESTS "Build unit tests" ON)
 
 add_subdirectory(core)
